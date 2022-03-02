@@ -29,6 +29,7 @@ public class BlockingQueue<T> {
         this.capacity = capacity;
     }
 
+
     /**
      * 从任务队列中取出任务，如果任务队列为空的时候，会一直阻塞
      *
@@ -46,6 +47,7 @@ public class BlockingQueue<T> {
                 }
             }
             T task = queue.removeFirst();
+            log.debug("取出任务{}", task);
             // 唤醒阻塞的生产者线程
             fullWaitSet.signalAll();
             return task;
@@ -76,6 +78,7 @@ public class BlockingQueue<T> {
                 }
             }
             T task = queue.removeFirst();
+            log.debug("取出任务{}", task);
             // 唤醒阻塞的生产者线程
             fullWaitSet.signalAll();
             return task;
@@ -125,6 +128,7 @@ public class BlockingQueue<T> {
             // 当任务队列为满的时候，需要阻塞当前线程
             while (queue.size() == capacity) {
                 if (nanos <= 0) {
+                    log.debug("加入任务队列失败{} ...", task);
                     return false;
                 }
                 try {
@@ -143,6 +147,32 @@ public class BlockingQueue<T> {
             lock.unlock();
         }
     }
+
+    public void putUseRejectPolicy(RejectPolicy<T> rejectPolicy, T task) {
+        lock.lock();
+        boolean equalCap = true;
+        try {
+            equalCap = queue.size() == capacity;
+        } finally {
+            lock.unlock();
+        }
+        // 判断队列是否满
+        if (equalCap) {
+            rejectPolicy.reject(this, task);
+        } else { // 队列没有满
+            lock.lock();
+            try {
+                log.debug("加入任务队列 {}", task);
+                queue.addLast(task);
+                emptyWaitSet.signalAll();
+            } finally {
+                lock.unlock();
+            }
+
+        }
+    }
+
+
 
     /**
      * @return 返回任务队列的大小

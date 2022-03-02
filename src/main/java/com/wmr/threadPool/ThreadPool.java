@@ -16,21 +16,23 @@ public class ThreadPool {
     // 3. 核心线程数
     private int coreSize;
 
-    // 4. 获取任务时的超时时间
+    // 4. 工作线程取任务时的超时时间
     private long timeout;
 
     // 5. 超时时间的单位
     private TimeUnit timeUnit;
 
     // 6. 拒接策略
+    private RejectPolicy<Runnable> rejectPolicy;
 
 
 
-    public ThreadPool(int coreSize, int capacity, long timeout, TimeUnit timeUnit) {
+    public ThreadPool(int coreSize, int capacity, long timeout, TimeUnit timeUnit, RejectPolicy<Runnable> rejectPolicy) {
         this.coreSize = coreSize;
         this.timeout = timeout;
         this.timeUnit = timeUnit;
         this.taskQueue = new BlockingQueue<>(capacity);
+        this.rejectPolicy = rejectPolicy;
     }
 
     /**
@@ -46,7 +48,14 @@ public class ThreadPool {
                 workers.add(worker);
                 worker.start();
             } else {
-                taskQueue.put(task);
+//                taskQueue.put(task);
+                // 线程池向阻塞队列放入任务有如下的策略
+                // 1) 死等
+                // 2) 带超时等待
+                // 3) 让调用者放弃任务执行
+                // 4) 让调用者抛出异常
+                // 5) 让调用者自己执行任务
+                taskQueue.putUseRejectPolicy(rejectPolicy, task);
             }
         }
     }
@@ -66,7 +75,7 @@ public class ThreadPool {
                 1. 当task不为空时，执行task的任务
                 2. 当task执行完毕，继续从任务队列中取新的任务
              */
-            while(task != null || (task = taskQueue.take()) != null) {
+            while(task != null || (task = taskQueue.take(timeout, timeUnit)) != null) {
                 // 为什么这里需要用到try-catch是因为配合不同的拒接策略
                 try {
                     log.debug("正在执行...{}", task);
